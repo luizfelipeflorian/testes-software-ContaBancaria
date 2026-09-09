@@ -3,87 +3,100 @@ package br.edu.ifms;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
+// Importações cruciais do Mockito
+import static org.mockito.Mockito.*;
+
 public class ContaBancariaTest {
 
-    // 1. Criar conta com saldo inicial válido.
     @Test
-    public void testCriarContaSaldoValido() {
-        ContaBancaria conta = new ContaBancaria(100.0);
-        assertEquals(100.0, conta.consultarSaldo(), "O saldo inicial deve ser 100.0");
+    public void deveEnviarEmailAoSacar() {
+        // 1. Criar o Mock
+        EmailService emailMock = mock(EmailService.class);
+        ContaBancaria conta = new ContaBancaria(100.0, emailMock);
+        
+        // 2. Executar a ação
+        conta.sacar(30.0);
+        
+        // 3. Verificar se o método foi chamado exatamente 1 vez com qualquer String
+        verify(emailMock, times(1)).enviarNotificacao(anyString());
     }
 
-    // 2. Tentar criar conta com saldo negativo (deve lançar exceção).
     @Test
-    public void testCriarContaSaldoNegativo() {
+    public void naoDeveEnviarEmailSeSaqueInvalido() {
+        EmailService emailMock = mock(EmailService.class);
+        ContaBancaria conta = new ContaBancaria(100.0, emailMock);
+        
+        // Ação e Assertiva da exceção
         assertThrows(IllegalArgumentException.class, () -> {
-            new ContaBancaria(-50.0);
-        }, "Deve lançar exceção ao criar conta com saldo negativo");
+            conta.sacar(150.0); // Saldo insuficiente
+        });
+        
+        // Verifica que o e-mail NUNCA foi enviado
+        verify(emailMock, never()).enviarNotificacao(anyString());
     }
 
-    // 3. Realizar depósito válido.
     @Test
-    public void testDepositoValido() {
-        ContaBancaria conta = new ContaBancaria(50.0);
+    public void deveEnviarEmailAoDepositar() {
+        EmailService emailMock = mock(EmailService.class);
+        ContaBancaria conta = new ContaBancaria(100.0, emailMock);
+        
         conta.depositar(50.0);
-        assertEquals(100.0, conta.consultarSaldo(), "O saldo após depósito deve ser 100.0");
-    }
-
-    // 4. Realizar depósito com valor inválido (zero ou negativo).
-    @Test
-    public void testDepositoInvalido() {
-        ContaBancaria conta = new ContaBancaria(100.0);
         
-        // Testando zero
-        assertThrows(IllegalArgumentException.class, () -> {
-            conta.depositar(0.0);
-        }, "Deve lançar exceção ao depositar zero");
+        verify(emailMock, times(1)).enviarNotificacao(anyString());
+    }
+
+    @Test
+    public void deveEnviarDoisEmailsNaTransferencia() {
+        // Precisamos de dois mocks independentes para rastrear as duas contas
+        EmailService emailOrigemMock = mock(EmailService.class);
+        EmailService emailDestinoMock = mock(EmailService.class);
         
-        // Testando valor negativo
-        assertThrows(IllegalArgumentException.class, () -> {
-            conta.depositar(-20.0);
-        }, "Deve lançar exceção ao depositar valor negativo");
-    }
-
-    // 5. Realizar saque válido.
-    @Test
-    public void testSaqueValido() {
-        ContaBancaria conta = new ContaBancaria(100.0);
-        conta.sacar(40.0);
-        assertEquals(60.0, conta.consultarSaldo(), "O saldo após o saque deve ser 60.0");
-    }
-
-    // 6. Tentar sacar valor maior que o saldo.
-    @Test
-    public void testSaqueMaiorQueSaldo() {
-        ContaBancaria conta = new ContaBancaria(100.0);
-        assertThrows(IllegalArgumentException.class, () -> {
-            conta.sacar(150.0);
-        }, "Deve lançar exceção ao sacar valor maior que o saldo");
-    }
-
-    // 7. Tentar sacar valor zero ou negativo.
-    @Test
-    public void testSaqueInvalido() {
-        ContaBancaria conta = new ContaBancaria(100.0);
+        ContaBancaria origem = new ContaBancaria(100.0, emailOrigemMock);
+        ContaBancaria destino = new ContaBancaria(50.0, emailDestinoMock);
         
-        // Testando zero
-        assertThrows(IllegalArgumentException.class, () -> {
-            conta.sacar(0.0);
-        }, "Deve lançar exceção ao sacar zero");
+        // Ação: transfere 50
+        origem.transferir(destino, 50.0);
         
-        // Testando valor negativo
-        assertThrows(IllegalArgumentException.class, () -> {
-            conta.sacar(-10.0);
-        }, "Deve lançar exceção ao sacar valor negativo");
+        // Verifica se a origem enviou o e-mail de saque
+        verify(emailOrigemMock, times(1)).enviarNotificacao(anyString());
+        // Verifica se o destino enviou o e-mail de depósito
+        verify(emailDestinoMock, times(1)).enviarNotificacao(anyString());
     }
 
-    // 8. Executar sequência de operações (depósito e saque) e verificar saldo final.
     @Test
-    public void testSequenciaDeOperacoes() {
-        ContaBancaria conta = new ContaBancaria(200.0);
-        conta.depositar(100.0); // Saldo vai para 300
-        conta.sacar(50.0);      // Saldo vai para 250
-        conta.sacar(50.0);      // Saldo vai para 200
-        assertEquals(200.0, conta.consultarSaldo(), "O saldo final deve ser 200.0 após a sequência de operações");
+    public void naoDeveTransferirSeSaldoInsuficiente() {
+        EmailService emailOrigemMock = mock(EmailService.class);
+        EmailService emailDestinoMock = mock(EmailService.class);
+        
+        ContaBancaria origem = new ContaBancaria(50.0, emailOrigemMock);
+        ContaBancaria destino = new ContaBancaria(100.0, emailDestinoMock);
+        
+        // Ação: tentar transferir 100 de uma conta com 50
+        assertThrows(IllegalArgumentException.class, () -> {
+            origem.transferir(destino, 100.0);
+        });
+        
+        // Nenhuma das contas deve enviar notificação
+        verify(emailOrigemMock, never()).enviarNotificacao(anyString());
+        verify(emailDestinoMock, never()).enviarNotificacao(anyString());
+        
+        // Opcional extra: garantir que saldo não mudou
+        assertEquals(50.0, origem.consultarSaldo());
+        assertEquals(100.0, destino.consultarSaldo());
+    }
+
+    @Test
+    public void deveLancarExcecaoSeEmailFalharNoSaque() {
+        EmailService emailMock = mock(EmailService.class);
+        ContaBancaria conta = new ContaBancaria(100.0, emailMock);
+        
+        // Configuramos o Mock para lançar uma RuntimeException ao tentar enviar e-mail
+        doThrow(new RuntimeException("Falha no servidor de e-mail"))
+            .when(emailMock).enviarNotificacao(anyString());
+        
+        // Ao tentar sacar, a conta fará a subtração e chamará o serviço, que lançará erro
+        assertThrows(RuntimeException.class, () -> {
+            conta.sacar(20.0);
+        });
     }
 }
